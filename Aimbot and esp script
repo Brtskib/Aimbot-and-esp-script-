@@ -1,0 +1,155 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local localPlayer = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+local aimAssistEnabled = false
+local espEnabled = false
+local maxScreenDistance = 150
+
+-- GUI Setup
+local gui = Instance.new("ScreenGui")
+gui.Name = "AssistESP_GUI"
+gui.ResetOnSpawn = false
+gui.Parent = localPlayer:WaitForChild("PlayerGui")
+
+-- Aim Assist Button
+local aimButton = Instance.new("TextButton")
+aimButton.Size = UDim2.new(0, 130, 0, 50)
+aimButton.Position = UDim2.new(0, 10, 0, 10)
+aimButton.Text = "Aim Assist: OFF"
+aimButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+aimButton.Font = Enum.Font.SourceSansBold
+aimButton.TextSize = 18
+aimButton.Parent = gui
+
+-- ESP Button
+local espButton = Instance.new("TextButton")
+espButton.Size = UDim2.new(0, 130, 0, 50)
+espButton.Position = UDim2.new(0, 10, 0, 70)
+espButton.Text = "ESP: OFF"
+espButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+espButton.Font = Enum.Font.SourceSansBold
+espButton.TextSize = 18
+espButton.Parent = gui
+
+aimButton.MouseButton1Click:Connect(function()
+	aimAssistEnabled = not aimAssistEnabled
+	aimButton.Text = "Aim Assist: " .. (aimAssistEnabled and "ON" or "OFF")
+	aimButton.BackgroundColor3 = aimAssistEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
+end)
+
+espButton.MouseButton1Click:Connect(function()
+	espEnabled = not espEnabled
+	espButton.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
+	espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= localPlayer then
+			if espEnabled then
+				createESP(player)
+			else
+				removeESP(player)
+			end
+		end
+	end
+end)
+
+-- ESP Functions
+local function createESP(player)
+	if player.Character and not player.Character:FindFirstChild("ESP_Highlight") then
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "ESP_Highlight"
+		highlight.FillColor = Color3.fromRGB(255, 0, 0)
+		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+		highlight.FillTransparency = 0.5
+		highlight.OutlineTransparency = 0
+		highlight.Adornee = player.Character
+		highlight.Parent = player.Character
+	end
+end
+
+local function removeESP(player)
+	if player.Character and player.Character:FindFirstChild("ESP_Highlight") then
+		player.Character:FindFirstChild("ESP_Highlight"):Destroy()
+	end
+end
+
+-- Apply ESP on character added
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function()
+		wait(1)
+		if espEnabled then
+			createESP(player)
+		end
+	end)
+end)
+
+-- For existing players
+for _, player in ipairs(Players:GetPlayers()) do
+	if player ~= localPlayer then
+		if player.Character then
+			createESP(player)
+		end
+		player.CharacterAdded:Connect(function()
+			wait(1)
+			if espEnabled then
+				createESP(player)
+			end
+		end)
+	end
+end
+
+-- Aim Assist Line-of-Sight Check
+local function hasLineOfSight(targetPart)
+	local origin = camera.CFrame.Position
+	local direction = (targetPart.Position - origin).Unit * (targetPart.Position - origin).Magnitude
+
+	local params = RaycastParams.new()
+	params.FilterDescendantsInstances = {localPlayer.Character}
+	params.FilterType = Enum.RaycastFilterType.Blacklist
+
+	local result = Workspace:Raycast(origin, direction, params)
+	return (not result) or (result.Instance:IsDescendantOf(targetPart.Parent))
+end
+
+-- Closest Target for Aim Assist
+local function getClosestPlayer()
+	local closestPart = nil
+	local shortestDistance = maxScreenDistance
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= localPlayer then
+			local character = player.Character
+			local hrp = character and character:FindFirstChild("HumanoidRootPart")
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+			if humanoid and humanoid.Health > 0 and hrp then
+				local screenPoint, onScreen = camera:WorldToViewportPoint(hrp.Position)
+				if onScreen then
+					local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+					local dist = (Vector2.new(screenPoint.X, screenPoint.Y) - screenCenter).Magnitude
+					if dist < shortestDistance and hasLineOfSight(hrp) then
+						shortestDistance = dist
+						closestPart = hrp
+					end
+				end
+			end
+		end
+	end
+
+	return closestPart
+end
+
+-- Aim Assist Lock-On
+RunService.RenderStepped:Connect(function()
+	if aimAssistEnabled then
+		local targetPart = getClosestPlayer()
+		if targetPart and targetPart:IsDescendantOf(Workspace) then
+			local camPosition = camera.CFrame.Position
+			camera.CFrame = CFrame.new(camPosition, targetPart.Position)
+		end
+	end
+end)
