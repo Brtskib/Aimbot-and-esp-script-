@@ -1,40 +1,114 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
 
 local localPlayer = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
+-- Variables
 local aimAssistEnabled = false
 local espEnabled = false
+local fovRadius = 100
 local maxScreenDistance = 150
+local guiVisible = false
 
 -- GUI Setup
 local gui = Instance.new("ScreenGui")
-gui.Name = "AssistESP_GUI"
+gui.Name = "ZionsHub_GUI"
 gui.ResetOnSpawn = false
 gui.Parent = localPlayer:WaitForChild("PlayerGui")
 
+-- Logo (to open/close GUI)
+local logo = Instance.new("ImageButton")
+logo.Size = UDim2.new(0, 80, 0, 80)
+logo.Position = UDim2.new(0, 20, 0, 200)
+logo.Image = "rbxassetid://74791331749289" -- Zion’s Hub logo ID
+logo.BackgroundTransparency = 1
+logo.Active = true
+logo.Draggable = true
+logo.Parent = gui
+
+-- Main Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 220, 0, 230)
+mainFrame.Position = UDim2.new(0, 120, 0, 200)
+mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+mainFrame.BorderSizePixel = 0
+mainFrame.Visible = false
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = gui
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 35)
+title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+title.BorderSizePixel = 0
+title.Text = "Zion's Hub"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 20
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Parent = mainFrame
+
 -- Aim Assist Button
 local aimButton = Instance.new("TextButton")
-aimButton.Size = UDim2.new(0, 130, 0, 50)
-aimButton.Position = UDim2.new(0, 10, 0, 10)
+aimButton.Size = UDim2.new(0, 180, 0, 40)
+aimButton.Position = UDim2.new(0, 20, 0, 50)
 aimButton.Text = "Aim Assist: OFF"
 aimButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-aimButton.Font = Enum.Font.SourceSansBold
+aimButton.Font = Enum.Font.GothamBold
 aimButton.TextSize = 18
-aimButton.Parent = gui
+aimButton.TextColor3 = Color3.new(1,1,1)
+aimButton.Parent = mainFrame
 
 -- ESP Button
 local espButton = Instance.new("TextButton")
-espButton.Size = UDim2.new(0, 130, 0, 50)
-espButton.Position = UDim2.new(0, 10, 0, 70)
+espButton.Size = UDim2.new(0, 180, 0, 40)
+espButton.Position = UDim2.new(0, 20, 0, 100)
 espButton.Text = "ESP: OFF"
 espButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-espButton.Font = Enum.Font.SourceSansBold
+espButton.Font = Enum.Font.GothamBold
 espButton.TextSize = 18
-espButton.Parent = gui
+espButton.TextColor3 = Color3.new(1,1,1)
+espButton.Parent = mainFrame
 
+-- FOV Slider
+local fovLabel = Instance.new("TextLabel")
+fovLabel.Size = UDim2.new(0, 180, 0, 30)
+fovLabel.Position = UDim2.new(0, 20, 0, 150)
+fovLabel.Text = "FOV Radius: " .. fovRadius
+fovLabel.Font = Enum.Font.GothamBold
+fovLabel.TextSize = 16
+fovLabel.TextColor3 = Color3.fromRGB(255,255,255)
+fovLabel.BackgroundTransparency = 1
+fovLabel.Parent = mainFrame
+
+local fovSlider = Instance.new("TextButton")
+fovSlider.Size = UDim2.new(0, 180, 0, 30)
+fovSlider.Position = UDim2.new(0, 20, 0, 180)
+fovSlider.Text = "Adjust FOV"
+fovSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+fovSlider.Font = Enum.Font.GothamBold
+fovSlider.TextSize = 16
+fovSlider.TextColor3 = Color3.fromRGB(255,255,255)
+fovSlider.Parent = mainFrame
+
+-- FOV Circle
+local fovCircle = Drawing.new("Circle")
+fovCircle.Color = Color3.fromRGB(255, 255, 255)
+fovCircle.Thickness = 1.5
+fovCircle.NumSides = 100
+fovCircle.Radius = fovRadius
+fovCircle.Filled = false
+fovCircle.Visible = true
+
+-- GUI Toggle
+logo.MouseButton1Click:Connect(function()
+	guiVisible = not guiVisible
+	mainFrame.Visible = guiVisible
+end)
+
+-- Button Functions
 aimButton.MouseButton1Click:Connect(function()
 	aimAssistEnabled = not aimAssistEnabled
 	aimButton.Text = "Aim Assist: " .. (aimAssistEnabled and "ON" or "OFF")
@@ -45,16 +119,13 @@ espButton.MouseButton1Click:Connect(function()
 	espEnabled = not espEnabled
 	espButton.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
 	espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
+end)
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= localPlayer then
-			if espEnabled then
-				createESP(player)
-			else
-				removeESP(player)
-			end
-		end
-	end
+fovSlider.MouseButton1Click:Connect(function()
+	fovRadius = math.clamp(fovRadius + 25, 50, 300)
+	if fovRadius >= 300 then fovRadius = 50 end
+	fovLabel.Text = "FOV Radius: " .. fovRadius
+	fovCircle.Radius = fovRadius
 end)
 
 -- ESP Functions
@@ -77,32 +148,26 @@ local function removeESP(player)
 	end
 end
 
--- Apply ESP on character added
-Players.PlayerAdded:Connect(function(player)
-	player.CharacterAdded:Connect(function()
-		wait(1)
+-- Continuous ESP Refresh
+task.spawn(function()
+	while task.wait(0.1) do
 		if espEnabled then
-			createESP(player)
+			for _, player in ipairs(Players:GetPlayers()) do
+				if player ~= localPlayer then
+					createESP(player)
+				end
+			end
+		else
+			for _, player in ipairs(Players:GetPlayers()) do
+				if player ~= localPlayer then
+					removeESP(player)
+				end
+			end
 		end
-	end)
+	end
 end)
 
--- For existing players
-for _, player in ipairs(Players:GetPlayers()) do
-	if player ~= localPlayer then
-		if player.Character then
-			createESP(player)
-		end
-		player.CharacterAdded:Connect(function()
-			wait(1)
-			if espEnabled then
-				createESP(player)
-			end
-		end)
-	end
-end
-
--- Aim Assist Line-of-Sight Check
+-- Aim Assist Functions
 local function hasLineOfSight(targetPart)
 	local origin = camera.CFrame.Position
 	local direction = (targetPart.Position - origin).Unit * (targetPart.Position - origin).Magnitude
@@ -115,10 +180,9 @@ local function hasLineOfSight(targetPart)
 	return (not result) or (result.Instance:IsDescendantOf(targetPart.Parent))
 end
 
--- Closest Target for Aim Assist
 local function getClosestPlayer()
 	local closestPart = nil
-	local shortestDistance = maxScreenDistance
+	local shortestDistance = fovRadius
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= localPlayer then
@@ -143,11 +207,14 @@ local function getClosestPlayer()
 	return closestPart
 end
 
--- Aim Assist Lock-On
+-- Aim Assist Loop
 RunService.RenderStepped:Connect(function()
+	fovCircle.Position = UserInputService:GetMouseLocation()
+	fovCircle.Visible = guiVisible
+
 	if aimAssistEnabled then
 		local targetPart = getClosestPlayer()
-		if targetPart and targetPart:IsDescendantOf(Workspace) then
+		if targetPart then
 			local camPosition = camera.CFrame.Position
 			camera.CFrame = CFrame.new(camPosition, targetPart.Position)
 		end
