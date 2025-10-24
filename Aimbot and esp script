@@ -1,39 +1,58 @@
+-- Zion's Hub (Snap Aim version)
+-- Executor/local script
+-- Features: draggable logo toggle, Red UI, fixed red FOV, aim snaps to target, ESP with name/health/distance
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local localPlayer = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
--- Variables
-local aimAssistEnabled = false
-local espEnabled = false
-local fovRadius = 100
-local maxScreenDistance = 150
-local guiVisible = false
+-- ===== Config =====
+local FOV_RADIUS = 120             -- default FOV radius in pixels (center-screen)
+local ESP_DISTANCE_MAX = 1000     -- max distance to show distance text (studs)
+local ZION_LOGO_ASSET = "rbxassetid://74791331749289" -- logo asset
+-- ===================
 
--- GUI Setup
+-- State
+local aimEnabled = false
+local espEnabled = false
+local guiOpen = false
+
+-- Containers
 local gui = Instance.new("ScreenGui")
-gui.Name = "ZionsHub_GUI"
+gui.Name = "ZionsHub"
 gui.ResetOnSpawn = false
 gui.Parent = localPlayer:WaitForChild("PlayerGui")
 
--- Logo (to open/close GUI)
+-- ===== Logo (draggable) =====
 local logo = Instance.new("ImageButton")
-logo.Size = UDim2.new(0, 80, 0, 80)
-logo.Position = UDim2.new(0, 20, 0, 200)
-logo.Image = "rbxassetid://74791331749289" -- Zion’s Hub logo ID
+logo.Name = "ZionLogo"
+logo.Size = UDim2.new(0,80,0,80)
+logo.Position = UDim2.new(0,20,0,180)
+logo.Image = ZION_LOGO_ASSET
 logo.BackgroundTransparency = 1
 logo.Active = true
 logo.Draggable = true
 logo.Parent = gui
 
--- Main Frame
+logo.MouseEnter:Connect(function()
+    logo:TweenSize(UDim2.new(0,86,0,86), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.12, true)
+end)
+logo.MouseLeave:Connect(function()
+    logo:TweenSize(UDim2.new(0,80,0,80), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.12, true)
+end)
+
+-- ===== Main UI Frame (draggable) =====
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 220, 0, 230)
-mainFrame.Position = UDim2.new(0, 120, 0, 200)
-mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0,260,0,300)
+mainFrame.Position = UDim2.new(0,120,0,180)
+mainFrame.AnchorPoint = Vector2.new(0,0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(10,10,10)
 mainFrame.BorderSizePixel = 0
 mainFrame.Visible = false
 mainFrame.Active = true
@@ -41,182 +60,400 @@ mainFrame.Draggable = true
 mainFrame.Parent = gui
 
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 35)
-title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+title.Size = UDim2.new(1,0,0,36)
+title.Position = UDim2.new(0,0,0,0)
+title.BackgroundColor3 = Color3.fromRGB(20,20,20)
 title.BorderSizePixel = 0
 title.Text = "Zion's Hub"
 title.Font = Enum.Font.GothamBold
-title.TextSize = 20
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 18
+title.TextColor3 = Color3.fromRGB(255,255,255)
 title.Parent = mainFrame
 
--- Aim Assist Button
-local aimButton = Instance.new("TextButton")
-aimButton.Size = UDim2.new(0, 180, 0, 40)
-aimButton.Position = UDim2.new(0, 20, 0, 50)
-aimButton.Text = "Aim Assist: OFF"
-aimButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-aimButton.Font = Enum.Font.GothamBold
-aimButton.TextSize = 18
-aimButton.TextColor3 = Color3.new(1,1,1)
-aimButton.Parent = mainFrame
+-- Aim Toggle Button
+local aimBtn = Instance.new("TextButton")
+aimBtn.Size = UDim2.new(0,220,0,40)
+aimBtn.Position = UDim2.new(0,20,0,60)
+aimBtn.Text = "Aim Assist: OFF"
+aimBtn.Font = Enum.Font.GothamBold
+aimBtn.TextSize = 16
+aimBtn.TextColor3 = Color3.new(1,1,1)
+aimBtn.BackgroundColor3 = Color3.fromRGB(200,60,60)
+aimBtn.BorderSizePixel = 0
+aimBtn.Parent = mainFrame
 
--- ESP Button
-local espButton = Instance.new("TextButton")
-espButton.Size = UDim2.new(0, 180, 0, 40)
-espButton.Position = UDim2.new(0, 20, 0, 100)
-espButton.Text = "ESP: OFF"
-espButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-espButton.Font = Enum.Font.GothamBold
-espButton.TextSize = 18
-espButton.TextColor3 = Color3.new(1,1,1)
-espButton.Parent = mainFrame
-
--- FOV Slider
+-- FOV Size (simple plus/minus)
 local fovLabel = Instance.new("TextLabel")
-fovLabel.Size = UDim2.new(0, 180, 0, 30)
-fovLabel.Position = UDim2.new(0, 20, 0, 150)
-fovLabel.Text = "FOV Radius: " .. fovRadius
-fovLabel.Font = Enum.Font.GothamBold
-fovLabel.TextSize = 16
-fovLabel.TextColor3 = Color3.fromRGB(255,255,255)
+fovLabel.Size = UDim2.new(0,220,0,24)
+fovLabel.Position = UDim2.new(0,20,0,110)
 fovLabel.BackgroundTransparency = 1
+fovLabel.Text = "FOV Radius: " .. tostring(FOV_RADIUS)
+fovLabel.Font = Enum.Font.Gotham
+fovLabel.TextSize = 14
+fovLabel.TextColor3 = Color3.fromRGB(220,220,220)
 fovLabel.Parent = mainFrame
 
-local fovSlider = Instance.new("TextButton")
-fovSlider.Size = UDim2.new(0, 180, 0, 30)
-fovSlider.Position = UDim2.new(0, 20, 0, 180)
-fovSlider.Text = "Adjust FOV"
-fovSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-fovSlider.Font = Enum.Font.GothamBold
-fovSlider.TextSize = 16
-fovSlider.TextColor3 = Color3.fromRGB(255,255,255)
-fovSlider.Parent = mainFrame
+local fovLeft = Instance.new("TextButton")
+fovLeft.Size = UDim2.new(0,40,0,28)
+fovLeft.Position = UDim2.new(0,20,0,138)
+fovLeft.Text = "-"
+fovLeft.Font = Enum.Font.GothamBold
+fovLeft.TextSize = 20
+fovLeft.Parent = mainFrame
 
--- FOV Circle
-local fovCircle = Drawing.new("Circle")
-fovCircle.Color = Color3.fromRGB(255, 255, 255)
-fovCircle.Thickness = 1.5
-fovCircle.NumSides = 100
-fovCircle.Radius = fovRadius
-fovCircle.Filled = false
-fovCircle.Visible = true
+local fovRight = Instance.new("TextButton")
+fovRight.Size = UDim2.new(0,40,0,28)
+fovRight.Position = UDim2.new(0,200,0,138)
+fovRight.Text = "+"
+fovRight.Font = Enum.Font.GothamBold
+fovRight.TextSize = 20
+fovRight.Parent = mainFrame
 
--- GUI Toggle
-logo.MouseButton1Click:Connect(function()
-	guiVisible = not guiVisible
-	mainFrame.Visible = guiVisible
-end)
+-- ESP Toggle Button
+local espBtn = Instance.new("TextButton")
+espBtn.Size = UDim2.new(0,220,0,40)
+espBtn.Position = UDim2.new(0,20,0,180)
+espBtn.Text = "ESP: OFF"
+espBtn.Font = Enum.Font.GothamBold
+espBtn.TextSize = 16
+espBtn.TextColor3 = Color3.new(1,1,1)
+espBtn.BackgroundColor3 = Color3.fromRGB(200,60,60)
+espBtn.BorderSizePixel = 0
+espBtn.Parent = mainFrame
 
--- Button Functions
-aimButton.MouseButton1Click:Connect(function()
-	aimAssistEnabled = not aimAssistEnabled
-	aimButton.Text = "Aim Assist: " .. (aimAssistEnabled and "ON" or "OFF")
-	aimButton.BackgroundColor3 = aimAssistEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
-end)
+-- Footer / small credits
+local footer = Instance.new("TextLabel")
+footer.Size = UDim2.new(1,0,0,20)
+footer.Position = UDim2.new(0,0,1,-20)
+footer.BackgroundTransparency = 1
+footer.Text = "Zion's Hub - Redz style"
+footer.Font = Enum.Font.Gotham
+footer.TextSize = 12
+footer.TextColor3 = Color3.fromRGB(160,160,160)
+footer.Parent = mainFrame
 
-espButton.MouseButton1Click:Connect(function()
-	espEnabled = not espEnabled
-	espButton.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
-	espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
-end)
+-- GUI open/close tween helper
+local tweenInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local openOffset = UDim2.new(0,120,0,180)
+local closedOffset = UDim2.new(0,120,0,120)
+mainFrame.Position = closedOffset
 
-fovSlider.MouseButton1Click:Connect(function()
-	fovRadius = math.clamp(fovRadius + 25, 50, 300)
-	if fovRadius >= 300 then fovRadius = 50 end
-	fovLabel.Text = "FOV Radius: " .. fovRadius
-	fovCircle.Radius = fovRadius
-end)
-
--- ESP Functions
-local function createESP(player)
-	if player.Character and not player.Character:FindFirstChild("ESP_Highlight") then
-		local highlight = Instance.new("Highlight")
-		highlight.Name = "ESP_Highlight"
-		highlight.FillColor = Color3.fromRGB(255, 0, 0)
-		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-		highlight.FillTransparency = 0.5
-		highlight.OutlineTransparency = 0
-		highlight.Adornee = player.Character
-		highlight.Parent = player.Character
-	end
+local function toggleGUI()
+    guiOpen = not guiOpen
+    if guiOpen then
+        mainFrame.Visible = true
+        TweenService:Create(mainFrame, tweenInfo, {Position = openOffset}):Play()
+    else
+        TweenService:Create(mainFrame, tweenInfo, {Position = closedOffset}):Play()
+        task.delay(0.18, function()
+            if not guiOpen then mainFrame.Visible = false end
+        end)
+    end
 end
 
-local function removeESP(player)
-	if player.Character and player.Character:FindFirstChild("ESP_Highlight") then
-		player.Character:FindFirstChild("ESP_Highlight"):Destroy()
-	end
-end
+logo.MouseButton1Click:Connect(toggleGUI)
 
--- Continuous ESP Refresh
-task.spawn(function()
-	while task.wait(0.1) do
-		if espEnabled then
-			for _, player in ipairs(Players:GetPlayers()) do
-				if player ~= localPlayer then
-					createESP(player)
-				end
-			end
-		else
-			for _, player in ipairs(Players:GetPlayers()) do
-				if player ~= localPlayer then
-					removeESP(player)
-				end
-			end
-		end
-	end
+-- Aim button behavior
+aimBtn.MouseButton1Click:Connect(function()
+    aimEnabled = not aimEnabled
+    aimBtn.Text = "Aim Assist: " .. (aimEnabled and "ON" or "OFF")
+    aimBtn.BackgroundColor3 = aimEnabled and Color3.fromRGB(60,200,80) or Color3.fromRGB(200,60,60)
 end)
 
--- Aim Assist Functions
+-- FOV adjust
+fovLeft.MouseButton1Click:Connect(function()
+    FOV_RADIUS = math.clamp(FOV_RADIUS - 15, 50, 400)
+    fovLabel.Text = "FOV Radius: " .. tostring(FOV_RADIUS)
+end)
+fovRight.MouseButton1Click:Connect(function()
+    FOV_RADIUS = math.clamp(FOV_RADIUS + 15, 50, 400)
+    fovLabel.Text = "FOV Radius: " .. tostring(FOV_RADIUS)
+end)
+
+-- ESP toggle
+espBtn.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    espBtn.Text = "ESP: " .. (espEnabled and "ON" or "OFF")
+    espBtn.BackgroundColor3 = espEnabled and Color3.fromRGB(60,200,80) or Color3.fromRGB(200,60,60)
+
+    if not espEnabled then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= localPlayer and plr.Character then
+                local head = plr.Character:FindFirstChild("Head")
+                if head then
+                    local b = head:FindFirstChild("ZionESP")
+                    if b then b:Destroy() end
+                end
+            end
+        end
+    else
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= localPlayer then
+                spawn(function()
+                    if plr.Character then
+                        task.wait(0.12)
+                        if espEnabled then
+                            createESPForPlayer(plr)
+                        end
+                    end
+                end)
+            end
+        end
+    end
+end)
+
+-- ===== Drawing FOV Circle (fixed center, red permanent) =====
+local successDrawing, Drawing = pcall(function() return Drawing end)
+local fovCircle
+if successDrawing and Drawing and Drawing.new then
+    fovCircle = Drawing.new("Circle")
+    fovCircle.Color = Color3.fromRGB(255, 60, 60) -- red
+    fovCircle.Thickness = 1.6
+    fovCircle.NumSides = 100
+    fovCircle.Radius = FOV_RADIUS
+    fovCircle.Filled = false
+    fovCircle.Visible = true
+else
+    local circleFrame = Instance.new("Frame")
+    circleFrame.Size = UDim2.new(0, FOV_RADIUS*2, 0, FOV_RADIUS*2)
+    circleFrame.AnchorPoint = Vector2.new(0.5,0.5)
+    circleFrame.Position = UDim2.new(0.5,0.5,0.5, -9999)
+    circleFrame.BackgroundTransparency = 1
+    circleFrame.Parent = gui
+    local circleOutline = Instance.new("ImageLabel")
+    circleOutline.Size = UDim2.new(1,0,1,0)
+    circleOutline.AnchorPoint = Vector2.new(0.5,0.5)
+    circleOutline.Position = UDim2.new(0.5,0.5)
+    circleOutline.BackgroundTransparency = 1
+    circleOutline.Image = "rbxassetid://3926307971"
+    circleOutline.ImageColor3 = Color3.fromRGB(255,60,60)
+    circleOutline.Parent = circleFrame
+    fovCircle = {
+        IsDrawingFallback = true,
+        Frame = circleFrame,
+        Outline = circleOutline,
+        Radius = FOV_RADIUS,
+    }
+end
+
+-- ===== ESP creation & management =====
+local function createESPForPlayer(player)
+    if not espEnabled then return end
+    if not player.Character then return end
+    local head = player.Character:FindFirstChild("Head")
+    if not head then return end
+    if head:FindFirstChild("ZionESP") then return end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ZionESP"
+    billboard.Adornee = head
+    billboard.AlwaysOnTop = true
+    billboard.Size = UDim2.new(0,140,0,48)
+    billboard.StudsOffset = Vector3.new(0,1.8,0)
+    billboard.Parent = head
+
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(1,0,1,0)
+    bg.BackgroundTransparency = 0.20
+    bg.BackgroundColor3 = Color3.fromRGB(0,0,0)
+    bg.BorderSizePixel = 0
+    bg.Parent = billboard
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, -8, 0, 18)
+    nameLabel.Position = UDim2.new(0,4,0,2)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextSize = 14
+    nameLabel.TextColor3 = Color3.fromRGB(255,255,255)
+    nameLabel.TextStrokeTransparency = 0.5
+    nameLabel.Text = player.Name
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.Parent = bg
+
+    local healthBg = Instance.new("Frame")
+    healthBg.Size = UDim2.new(1, -8, 0, 8)
+    healthBg.Position = UDim2.new(0,4,0,22)
+    healthBg.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    healthBg.BorderSizePixel = 0
+    healthBg.Parent = bg
+
+    local healthFill = Instance.new("Frame")
+    healthFill.Size = UDim2.new(1,0,1,0)
+    healthFill.Position = UDim2.new(0,0,0,0)
+    healthFill.BackgroundColor3 = Color3.fromRGB(0,255,0)
+    healthFill.BorderSizePixel = 0
+    healthFill.Parent = healthBg
+
+    local distLabel = Instance.new("TextLabel")
+    distLabel.Size = UDim2.new(1, -8, 0, 14)
+    distLabel.Position = UDim2.new(0,4,1,-16)
+    distLabel.BackgroundTransparency = 1
+    distLabel.Font = Enum.Font.Gotham
+    distLabel.TextSize = 12
+    distLabel.TextColor3 = Color3.fromRGB(200,200,200)
+    distLabel.Text = ""
+    distLabel.TextXAlignment = Enum.TextXAlignment.Left
+    distLabel.Parent = bg
+
+    billboard:SetAttribute("NameLabel", nameLabel)
+    billboard:SetAttribute("HealthFill", healthFill)
+    billboard:SetAttribute("DistLabel", distLabel)
+end
+
+local function removeESPForPlayer(player)
+    if not player.Character then return end
+    local head = player.Character:FindFirstChild("Head")
+    if head then
+        local b = head:FindFirstChild("ZionESP")
+        if b then b:Destroy() end
+    end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+    plr.CharacterAdded:Connect(function(char)
+        task.wait(0.12)
+        if espEnabled then createESPForPlayer(plr) end
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(plr)
+    removeESPForPlayer(plr)
+end)
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr ~= localPlayer then
+        if plr.Character and espEnabled then
+            createESPForPlayer(plr)
+        end
+        plr.CharacterAdded:Connect(function()
+            task.wait(0.12)
+            if espEnabled then createESPForPlayer(plr) end
+        end)
+        plr.CharacterRemoving:Connect(function()
+            removeESPForPlayer(plr)
+        end)
+    end
+end
+
+-- ===== Utility: line of sight check =====
 local function hasLineOfSight(targetPart)
-	local origin = camera.CFrame.Position
-	local direction = (targetPart.Position - origin).Unit * (targetPart.Position - origin).Magnitude
-
-	local params = RaycastParams.new()
-	params.FilterDescendantsInstances = {localPlayer.Character}
-	params.FilterType = Enum.RaycastFilterType.Blacklist
-
-	local result = Workspace:Raycast(origin, direction, params)
-	return (not result) or (result.Instance:IsDescendantOf(targetPart.Parent))
+    if not targetPart then return false end
+    local origin = camera.CFrame.Position
+    local direction = (targetPart.Position - origin)
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {localPlayer.Character}
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    local result = Workspace:Raycast(origin, direction, params)
+    if not result then
+        return true
+    end
+    return result.Instance and result.Instance:IsDescendantOf(targetPart.Parent)
 end
 
-local function getClosestPlayer()
-	local closestPart = nil
-	local shortestDistance = fovRadius
+-- ===== Finding closest player inside FOV (center-screen) =====
+local function getClosestPlayerInFOV()
+    local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+    local closest = nil
+    local shortest = FOV_RADIUS
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= localPlayer then
-			local character = player.Character
-			local hrp = character and character:FindFirstChild("HumanoidRootPart")
-			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= localPlayer and plr.Character and plr.Character.Parent then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hrp and humanoid and humanoid.Health > 0 then
+                local screenPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+                if onScreen then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                    if dist <= FOV_RADIUS and dist < shortest and hasLineOfSight(hrp) then
+                        shortest = dist
+                        closest = hrp
+                    end
+                end
+            end
+        end
+    end
 
-			if humanoid and humanoid.Health > 0 and hrp then
-				local screenPoint, onScreen = camera:WorldToViewportPoint(hrp.Position)
-				if onScreen then
-					local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-					local dist = (Vector2.new(screenPoint.X, screenPoint.Y) - screenCenter).Magnitude
-					if dist < shortestDistance and hasLineOfSight(hrp) then
-						shortestDistance = dist
-						closestPart = hrp
-					end
-				end
-			end
-		end
-	end
-
-	return closestPart
+    return closest
 end
 
--- Aim Assist Loop
+-- ===== Main update loop (aim + ESP updates + FOV drawing) =====
 RunService.RenderStepped:Connect(function()
-	fovCircle.Position = UserInputService:GetMouseLocation()
-	fovCircle.Visible = guiVisible
+    -- Update FOV visuals
+    if fovCircle then
+        if fovCircle.IsDrawingFallback then
+            local center = camera.ViewportSize/2
+            fovCircle.Frame.Size = UDim2.new(0, FOV_RADIUS*2, 0, FOV_RADIUS*2)
+            fovCircle.Frame.Position = UDim2.new(0, center.X - FOV_RADIUS, 0, center.Y - FOV_RADIUS)
+        else
+            fovCircle.Radius = FOV_RADIUS
+            local center = camera.ViewportSize/2
+            fovCircle.Position = Vector2.new(center.X, center.Y)
+            fovCircle.Visible = true
+        end
+    end
 
-	if aimAssistEnabled then
-		local targetPart = getClosestPlayer()
-		if targetPart then
-			local camPosition = camera.CFrame.Position
-			camera.CFrame = CFrame.new(camPosition, targetPart.Position)
-		end
-	end
+    -- Aim logic (snapping instantly when toggled ON)
+    if aimEnabled then
+        local targetPart = getClosestPlayerInFOV()
+        if targetPart and targetPart.Parent then
+            local camPos = camera.CFrame.Position
+            camera.CFrame = CFrame.new(camPos, targetPart.Position) -- snap directly
+        end
+    end
+
+    -- ESP updates (health & distance)
+    if espEnabled then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= localPlayer and plr.Character and plr.Character.Parent then
+                local head = plr.Character:FindFirstChild("Head")
+                local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+                if head then
+                    local b = head:FindFirstChild("ZionESP")
+                    if b then
+                        local healthFill = b:GetAttribute("HealthFill")
+                        local distLabel = b:GetAttribute("DistLabel")
+
+                        -- fallback find if attributes missing
+                        if not healthFill or not distLabel then
+                            local bg = b:FindFirstChildWhichIsA("Frame")
+                            if bg then
+                                distLabel = distLabel or bg:FindFirstChildWhichIsA("TextLabel")
+                                local healthBg = bg:FindFirstChildWhichIsA("Frame")
+                                if healthBg then
+                                    healthFill = healthFill or healthBg:FindFirstChildWhichIsA("Frame")
+                                end
+                            end
+                        end
+
+                        if hum and healthFill then
+                            local pct = math.clamp(hum.Health / (hum.MaxHealth > 0 and hum.MaxHealth or 1), 0, 1)
+                            healthFill.Size = UDim2.new(pct, 0, 1, 0)
+                            local color
+                            if pct > 0.75 then
+                                color = Color3.fromRGB(80,220,80)
+                            elseif pct > 0.40 then
+                                color = Color3.fromRGB(240,200,60)
+                            else
+                                color = Color3.fromRGB(230,70,70)
+                            end
+                            healthFill.BackgroundColor3 = color
+                        end
+
+                        if distLabel and head and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local dist = (hrp.Position - localPlayer.Character.HumanoidRootPart.Position).Magnitude
+                                if dist > ESP_DISTANCE_MAX then
+                                    distLabel.Text = string.format("%.0f+ studs", ESP_DISTANCE_MAX)
+                                else
+                                    distLabel.Text = string.format("%.0f studs", dist)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
 end)
